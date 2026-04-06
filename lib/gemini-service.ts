@@ -100,7 +100,7 @@ export async function generateExercises(
   const prompt = prompts[type];
 
   const genAI = getGenAI();
-  const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
   const result = await model.generateContent(prompt);
   const response = result.response.text();
