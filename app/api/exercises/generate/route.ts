@@ -41,9 +41,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Save exercises to Supabase
-    const exercisesToSave = exercises.map((exercise) => ({
+    const exercisesToSave = exercises.map((exercise, index) => ({
       user_id: userId,
-      type: exercise.type,
+      title: `${type} Exercise ${index + 1}`,
+      description: topic || `${level} level ${type} exercise`,
+      level: level,
+      category: type,
       content: exercise,
       created_at: new Date().toISOString(),
     }));
