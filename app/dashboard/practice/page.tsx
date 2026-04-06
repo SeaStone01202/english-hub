@@ -67,7 +67,7 @@ export default function PracticePage() {
   }, [user?.id])
 
   const levels = ['all', 'beginner', 'intermediate', 'advanced'] as const
-  const categories = ['all', ...new Set(exercises.map((e) => e.category))]
+  const categories = ['all', ...new Set(exercises.map((e) => e.category).filter(Boolean))]
 
   const filteredExercises = exercises.filter((exercise) => {
     const levelMatch = selectedLevel === 'all' || exercise.level === selectedLevel
