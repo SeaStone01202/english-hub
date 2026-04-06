@@ -1,5 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// Use server-side only environment variable for security
+const getGenAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GEMINI_API_KEY environment variable");
+  }
+  return new GoogleGenerativeAI(apiKey);
+};
+
 interface ExerciseRequest {
   type: "multiple-choice" | "fill-blank" | "matching" | "listening";
   level: "beginner" | "intermediate" | "advanced";
@@ -46,17 +55,9 @@ export type Exercise =
   | MatchingExercise
   | ListeningExercise;
 
-// Helper function to delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export async function generateExercises(
   request: ExerciseRequest
 ): Promise<Exercise[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY environment variable");
-  }
-
   const { type, level, topic, quantity = 3 } = request;
 
   const prompts = {
@@ -98,54 +99,18 @@ export async function generateExercises(
 
   const prompt = prompts[type];
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+  const genAI = getGenAI();
+  const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-  // Retry logic for rate limiting
-  const maxRetries = 3;
-  let lastError: Error | null = null;
+  const result = await model.generateContent(prompt);
+  const response = result.response.text();
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const result = await model.generateContent(
-        `${prompt}\n\nIMPORTANT: Return ONLY the JSON array, no other text or markdown formatting.`
-      );
-      const response = result.response.text();
-
-      if (!response || response.trim() === "") {
-        throw new Error("AI returned empty response");
-      }
-
-      // Clean up the response - remove markdown code blocks if present
-      let cleanedResponse = response.trim();
-      cleanedResponse = cleanedResponse.replace(/^```json?\s*/i, "");
-      cleanedResponse = cleanedResponse.replace(/```\s*$/i, "");
-      cleanedResponse = cleanedResponse.trim();
-
-      // Extract JSON from response
-      const jsonMatch = cleanedResponse.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error("Failed to parse generated exercises from AI response");
-      }
-
-      const exercises: Exercise[] = JSON.parse(jsonMatch[0]);
-      return exercises;
-    } catch (error) {
-      lastError = error as Error;
-      
-      // Check if it's a rate limit error
-      if (lastError.message?.includes("429") || lastError.message?.includes("rate limit") || lastError.message?.includes("quota")) {
-        // Wait before retrying (exponential backoff)
-        const waitTime = Math.pow(2, attempt) * 5000; // 5s, 10s, 20s
-        console.log(`Rate limited, waiting ${waitTime/1000}s before retry ${attempt + 1}/${maxRetries}`);
-        await delay(waitTime);
-        continue;
-      }
-      
-      // For other errors, throw immediately
-      throw error;
-    }
+  // Extract JSON from response
+  const jsonMatch = response.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    throw new Error("Failed to parse generated exercises from Gemini response");
   }
 
-  throw lastError || new Error("Failed to generate exercises after retries");
+  const exercises: Exercise[] = JSON.parse(jsonMatch[0]);
+  return exercises;
 }
