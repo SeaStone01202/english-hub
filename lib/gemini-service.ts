@@ -1,3 +1,4 @@
+// Using Google Generative AI SDK
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Use server-side only environment variable for security
