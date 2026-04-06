@@ -1,13 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Use server-side only environment variable for security
-const getGenAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY environment variable");
-  }
-  return new GoogleGenerativeAI(apiKey);
-};
+import { generateText } from "ai";
 
 interface ExerciseRequest {
   type: "multiple-choice" | "fill-blank" | "matching" | "listening";
@@ -99,11 +90,12 @@ export async function generateExercises(
 
   const prompt = prompts[type];
 
-  const genAI = getGenAI();
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+  const result = await generateText({
+    model: "google/gemini-2.0-flash",
+    prompt: prompt,
+  });
 
-  const result = await model.generateContent(prompt);
-  const response = result.response.text();
+  const response = result.text;
 
   // Extract JSON from response
   const jsonMatch = response.match(/\[[\s\S]*\]/);
