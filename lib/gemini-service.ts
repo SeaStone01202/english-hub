@@ -92,17 +92,39 @@ export async function generateExercises(
 
   const result = await generateText({
     model: "google/gemini-2.0-flash",
-    prompt: prompt,
+    prompt: `${prompt}\n\nIMPORTANT: Return ONLY the JSON array, no other text or markdown formatting.`,
   });
 
   const response = result.text;
+  
+  console.log("[v0] Raw AI response:", response);
 
-  // Extract JSON from response
-  const jsonMatch = response.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    throw new Error("Failed to parse generated exercises from Gemini response");
+  if (!response || response.trim() === "") {
+    throw new Error("AI returned empty response");
   }
 
-  const exercises: Exercise[] = JSON.parse(jsonMatch[0]);
-  return exercises;
+  // Clean up the response - remove markdown code blocks if present
+  let cleanedResponse = response.trim();
+  
+  // Remove markdown code block syntax
+  cleanedResponse = cleanedResponse.replace(/^```json?\s*/i, "");
+  cleanedResponse = cleanedResponse.replace(/```\s*$/i, "");
+  cleanedResponse = cleanedResponse.trim();
+
+  // Extract JSON from response
+  const jsonMatch = cleanedResponse.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.error("[v0] Failed to find JSON array in response:", cleanedResponse);
+    throw new Error("Failed to parse generated exercises from AI response");
+  }
+
+  try {
+    const exercises: Exercise[] = JSON.parse(jsonMatch[0]);
+    console.log("[v0] Parsed exercises:", exercises.length);
+    return exercises;
+  } catch (parseError) {
+    console.error("[v0] JSON parse error:", parseError);
+    console.error("[v0] Attempted to parse:", jsonMatch[0]);
+    throw new Error("Failed to parse JSON from AI response");
+  }
 }
