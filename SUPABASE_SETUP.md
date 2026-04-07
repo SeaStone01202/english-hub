@@ -1,48 +1,47 @@
-# Supabase Setup Guide
+# Supabase Setup Guide (v2)
 
-## 1. Initial Setup
+## 1) Environment Variables
 
-You have three environment variables configured:
-- `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anonymous key
-- `NEXT_PUBLIC_GEMINI_API_KEY`: Your Google Gemini API key
+Required:
 
-## 2. Create Database Schema
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `GEMINI_API_KEY` (server-side key, do not expose in browser)
+- Optional: `GEMINI_MODEL` (default fallback chain is used if empty)
 
-1. Go to your Supabase dashboard
-2. Navigate to the SQL Editor
-3. Copy and paste the contents of `/scripts/setup-db.sql`
-4. Click "Run" to execute the migration
+## 2) Run Database Script
 
-This will create:
-- `users` table with user profiles
-- `exercises` table for storing generated exercises
-- `quiz_sessions` table for grouping exercises
-- `quiz_questions` table for individual questions
-- `user_progress` table for tracking completion and scores
+1. Open Supabase dashboard.
+2. Go to SQL Editor.
+3. Run `scripts/setup-db.sql`.
 
-All tables have Row Level Security (RLS) enabled to ensure users can only access their own data.
+This creates:
 
-## 3. Authentication
+- `users`
+- `learning_sessions`
+- `ai_generations`
+- `session_questions`
+- `question_options`
+- `user_answers`
+- `vocabulary_items`
+- `vocabulary_progress`
 
-The app now uses Supabase Auth with email/password authentication. Users will:
-1. Sign up with email and password
-2. A user profile is automatically created in the `users` table
-3. Users can log in with their credentials
+It also enables RLS and creates an auth trigger so new `auth.users` rows auto-create profile rows in `public.users`.
 
-## 4. Gemini API Integration
+## 3) App Flow
 
-The app uses Google's Gemini API to generate exercises on-demand. When a user generates an exercise:
-1. The request is sent to `/api/exercises/generate`
-2. Gemini generates the exercise content
-3. The exercise is stored in the database
-4. The exercise is returned to the user
+- `POST /api/exercises/generate`
+  - creates or continues a learning session
+  - calls Gemini for structured JSON
+  - stores generation logs and generated content
+- `GET /api/exercises/fetch`
+  - `?sessionId=...` returns full session content
+  - without `sessionId` returns recent sessions list (optional mode filter)
 
-## 5. Testing
+## 4) UI Entry Points
 
-Once setup is complete:
-1. Register a new user
-2. Navigate to "Practice" or "Quizzes"
-3. Click "Generate New Exercise"
-4. Select exercise type and difficulty
-5. Gemini will generate a new exercise for you
+- `/dashboard/practice`
+  - Grammar, Vocabulary, Mock Test in one studio
+  - supports continue-generation flow
+- `/dashboard/quizzes`
+  - mock test session launcher/history

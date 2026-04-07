@@ -18,7 +18,7 @@ export default function QuizPage() {
   const { recordPractice } = useProgress()
 
   const quiz = getQuizById(params.id as string)
-  const [questions, setQuestions] = useState(getRandomizedQuestions(quiz || { questions: [] }))
+  const [questions, setQuestions] = useState(quiz ? getRandomizedQuestions(quiz) : [])
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<
     { questionId: string; correct: boolean; answer: string }[]

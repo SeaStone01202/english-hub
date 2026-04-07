@@ -1,70 +1,81 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useAuth } from '@/contexts/auth-context'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Spinner } from '@/components/ui/spinner'
-import { Zap } from 'lucide-react'
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { useAuth } from "@/contexts/auth-context";
+import { Zap } from "lucide-react";
+import { useState } from "react";
 
-type ExerciseType = 'multiple-choice' | 'fill-blank' | 'matching' | 'listening'
-type Level = 'beginner' | 'intermediate' | 'advanced'
+type ExerciseType = "multiple-choice" | "fill-blank" | "matching" | "listening";
+type Level = "beginner" | "intermediate" | "advanced";
 
 interface ExerciseGeneratorProps {
-  onExerciseGenerated?: (exercise: any) => void
+  onExerciseGenerated?: (exercise: any) => void;
 }
 
-export function ExerciseGenerator({ onExerciseGenerated }: ExerciseGeneratorProps) {
-  const { user } = useAuth()
-  const [exerciseType, setExerciseType] = useState<ExerciseType>('multiple-choice')
-  const [level, setLevel] = useState<Level>('beginner')
-  const [topic, setTopic] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function ExerciseGenerator({
+  onExerciseGenerated,
+}: ExerciseGeneratorProps) {
+  const { user } = useAuth();
+  const [exerciseType, setExerciseType] =
+    useState<ExerciseType>("multiple-choice");
+  const [level, setLevel] = useState<Level>("beginner");
+  const [topic, setTopic] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerateExercise = async () => {
     if (!user) {
-      setError('You must be logged in to generate exercises')
-      return
+      setError("You must be logged in to generate exercises");
+      return;
     }
 
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const response = await fetch('/api/exercises/generate', {
-        method: 'POST',
+      const mode = exerciseType === "listening" ? "mock_test" : "grammar";
+
+      const response = await fetch("/api/exercises/generate", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: exerciseType,
+          mode,
           level,
-          topic: topic || 'General English',
-          userId: user.id,
+          topic: topic || "General English",
+          quantity: 10,
         }),
-      })
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to generate exercise')
+        throw new Error("Failed to generate exercise");
       }
 
-      const exercise = await response.json()
-      onExerciseGenerated?.(exercise)
-      setTopic('')
+      const exercise = await response.json();
+      onExerciseGenerated?.(exercise);
+      setTopic("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Card>
@@ -81,7 +92,10 @@ export function ExerciseGenerator({ onExerciseGenerated }: ExerciseGeneratorProp
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Exercise Type</label>
-            <Select value={exerciseType} onValueChange={(value) => setExerciseType(value as ExerciseType)}>
+            <Select
+              value={exerciseType}
+              onValueChange={(value) => setExerciseType(value as ExerciseType)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -89,14 +103,19 @@ export function ExerciseGenerator({ onExerciseGenerated }: ExerciseGeneratorProp
                 <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
                 <SelectItem value="fill-blank">Fill in the Blank</SelectItem>
                 <SelectItem value="matching">Matching Pairs</SelectItem>
-                <SelectItem value="listening">Listening Comprehension</SelectItem>
+                <SelectItem value="listening">
+                  Listening Comprehension
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Level</label>
-            <Select value={level} onValueChange={(value) => setLevel(value as Level)}>
+            <Select
+              value={level}
+              onValueChange={(value) => setLevel(value as Level)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -149,5 +168,5 @@ export function ExerciseGenerator({ onExerciseGenerated }: ExerciseGeneratorProp
         </Button>
       </CardContent>
     </Card>
-  )
+  );
 }

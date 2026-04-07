@@ -62,14 +62,14 @@ export default function DashboardPage() {
 
   const quickActions = [
     {
-      title: 'Practice Exercises',
-      description: 'Improve your skills with interactive lessons',
+      title: 'Practice Studio',
+      description: 'Generate grammar, vocabulary, and mock test sessions',
       href: '/dashboard/practice',
       icon: BookOpen,
     },
     {
-      title: 'Take Quizzes',
-      description: 'Test your knowledge with randomized questions',
+      title: 'Mock Tests',
+      description: 'Continue exam-style sessions with AI-generated questions',
       href: '/dashboard/quizzes',
       icon: Trophy,
     },
