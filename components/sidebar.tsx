@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { BookOpen, BarChart3, Home, Settings, LogOut, Users, Award } from 'lucide-react'
+import { BookOpen, BarChart3, Home, Settings, LogOut, Award } from 'lucide-react'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -15,7 +15,6 @@ export function Sidebar() {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/dashboard/practice', label: 'Practice', icon: BookOpen },
-    { href: '/dashboard/quizzes', label: 'Quizzes', icon: Users },
     { href: '/dashboard/progress', label: 'Progress', icon: BarChart3 },
     { href: '/dashboard/achievements', label: 'Achievements', icon: Award },
   ]

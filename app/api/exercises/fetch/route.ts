@@ -151,8 +151,17 @@ export async function GET(request: NextRequest) {
       .order("updated_at", { ascending: false })
       .limit(Number.isNaN(limit) ? 20 : Math.min(limit, 50));
 
+    if (mode === "mock_test") {
+      return NextResponse.json(
+        { error: "Mock test is temporarily disabled" },
+        { status: 410 },
+      );
+    }
+
     if (mode) {
       query = query.eq("mode", mode);
+    } else {
+      query = query.neq("mode", "mock_test");
     }
 
     const { data: sessions, error } = await query;

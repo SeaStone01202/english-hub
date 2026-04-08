@@ -184,6 +184,7 @@ function createSystemPrompt(mode: LearningMode) {
       "Return only valid JSON.",
       "No markdown, no extra keys, no explanations outside JSON.",
       "meaning_vi and example_translation must be natural Vietnamese.",
+      "All explanation-like text must be in Vietnamese.",
       "Use practical words and avoid duplicates.",
     ].join(" ");
   }
@@ -193,6 +194,7 @@ function createSystemPrompt(mode: LearningMode) {
     "Return only valid JSON.",
     "No markdown, no extra keys, no explanations outside JSON.",
     "Use clear and student-friendly language.",
+    "The field explanation must always be written in Vietnamese.",
     "Make answers unambiguous and avoid trick questions.",
   ].join(" ");
 }
@@ -209,6 +211,7 @@ function createUserPrompt({
       `Topic: ${topic}.`,
       "Return JSON with structure:",
       '{"title":"...","description":"...","items":[{"word":"...","phonetic":"...","part_of_speech":"...","meaning_vi":"...","meaning_en":"...","example_sentence":"...","example_translation":"..."}]}',
+      "title and description should be in Vietnamese.",
       "example_sentence must be under 20 words.",
     ].join("\n");
   }
@@ -224,6 +227,7 @@ function createUserPrompt({
     "Return JSON with structure:",
     '{"title":"...","description":"...","items":[{"question_type":"multiple_choice|fill_blank|matching","question":"...","instruction":"...","options":["..."],"correct_answer":"...","acceptable_answers":["..."],"pairs":[{"left":"...","right":"..."}],"explanation":"..."}]}',
     "Rules:",
+    "- explanation must be in Vietnamese.",
     "- multiple_choice: must include exactly 4 options and correct_answer must match one option.",
     "- fill_blank: question must include at least one ____ blank. acceptable_answers required.",
     "- matching: include 4 pairs, correct_answer format: left|right,left|right,...",

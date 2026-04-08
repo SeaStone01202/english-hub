@@ -63,15 +63,9 @@ export default function DashboardPage() {
   const quickActions = [
     {
       title: 'Practice Studio',
-      description: 'Generate grammar, vocabulary, and mock test sessions',
+      description: 'Generate grammar and vocabulary sessions',
       href: '/dashboard/practice',
       icon: BookOpen,
-    },
-    {
-      title: 'Mock Tests',
-      description: 'Continue exam-style sessions with AI-generated questions',
-      href: '/dashboard/quizzes',
-      icon: Trophy,
     },
     {
       title: 'View Progress',

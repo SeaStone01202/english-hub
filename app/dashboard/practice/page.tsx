@@ -14,7 +14,6 @@ import {
   Languages,
   Loader2,
   Sparkles,
-  TestTubeDiagonal,
   Volume2,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -37,12 +36,6 @@ const modeOptions: Array<{
     label: "Vocabulary",
     description: "Topic words + meaning + voice",
     icon: Languages,
-  },
-  {
-    id: "mock_test",
-    label: "Mock Test",
-    description: "Exam-style mixed questions",
-    icon: TestTubeDiagonal,
   },
 ];
 
@@ -149,6 +142,13 @@ export default function PracticePage() {
         questions: SessionQuestion[];
         vocabulary: VocabularyItem[];
       };
+      if (payload.session.mode === "mock_test") {
+        setError("Session mock test đang tạm dừng.");
+        setSession(null);
+        setQuestions([]);
+        setVocabulary([]);
+        return;
+      }
       setSession(payload.session);
       setMode(payload.session.mode);
       setLevel(payload.session.level);
@@ -170,7 +170,7 @@ export default function PracticePage() {
   useEffect(() => {
     const sessionId = searchParams.get("session");
     const modeParam = searchParams.get("mode");
-    if (modeParam === "grammar" || modeParam === "vocabulary" || modeParam === "mock_test") {
+    if (modeParam === "grammar" || modeParam === "vocabulary") {
       setMode(modeParam);
     }
     fetchRecentSessions();
@@ -181,6 +181,11 @@ export default function PracticePage() {
   }, [user?.id]);
 
   const generate = async (continueCurrent: boolean) => {
+    if (mode === "mock_test") {
+      setError("Mock test is temporarily disabled. Use grammar or vocabulary.");
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     try {

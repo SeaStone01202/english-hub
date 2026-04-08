@@ -41,7 +41,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validModes: LearningMode[] = ["grammar", "vocabulary", "mock_test"];
+    if (mode === "mock_test") {
+      return NextResponse.json(
+        {
+          error:
+            "Mock test is temporarily disabled. Please use grammar or vocabulary mode.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const validModes: LearningMode[] = ["grammar", "vocabulary"];
     if (!validModes.includes(mode)) {
       return NextResponse.json(
         {
@@ -127,7 +137,7 @@ export async function POST(request: NextRequest) {
           title:
             mode === "vocabulary"
               ? `${topic} Vocabulary`
-              : `${topic} ${mode === "mock_test" ? "Mock Test" : "Grammar"}`,
+              : `${topic} Grammar`,
           status: "active",
         })
         .select("*")
