@@ -9,21 +9,20 @@ import {
 } from "@/lib/learning-types";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import {
-  BookOpen,
-  Languages,
-  Loader2,
-  Sparkles,
-  Volume2,
-} from "lucide-react";
+import { DictationPanel } from "./_components/dictation-panel";
+import { GrammarQuestionCard } from "./_components/grammar-question-card";
+import { PracticeToolbar } from "./_components/practice-toolbar";
+import { RecentSessions } from "./_components/recent-sessions";
+import { VocabularyCard } from "./_components/vocabulary-card";
+import { BookOpen, Headphones, Languages, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const modeOptions: Array<{
-  id: LearningMode;
+  id: LearningMode | "dictation";
   label: string;
   description: string;
-  icon: typeof BookOpen;
+  icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
     id: "grammar",
@@ -37,16 +36,37 @@ const modeOptions: Array<{
     description: "Topic words + meaning + voice",
     icon: Languages,
   },
+  {
+    id: "dictation",
+    label: "Dictation",
+    description: "Listen and type the full sentence",
+    icon: Headphones,
+  },
 ];
 
 const levelOptions: LearningLevel[] = ["beginner", "intermediate", "advanced"];
+
+type PracticeMode = LearningMode | "dictation";
+
+function normalizeDictationText(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/[^\w\s]|_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitWords(input: string) {
+  const normalized = normalizeDictationText(input);
+  return normalized ? normalized.split(" ") : [];
+}
 
 export default function PracticePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
 
-  const [mode, setMode] = useState<LearningMode>("grammar");
+  const [mode, setMode] = useState<PracticeMode>("grammar");
   const [level, setLevel] = useState<LearningLevel>("beginner");
   const [topic, setTopic] = useState("Daily English");
   const [session, setSession] = useState<LearningSession | null>(null);
@@ -71,11 +91,78 @@ export default function PracticePage() {
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const [recentError, setRecentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dictationSentence, setDictationSentence] = useState("");
+  const [dictationTranslation, setDictationTranslation] = useState("");
+  const [dictationHint, setDictationHint] = useState("");
+  const [dictationInput, setDictationInput] = useState("");
+  const [isGeneratingDictation, setIsGeneratingDictation] = useState(false);
+  const [dictationChecked, setDictationChecked] = useState(false);
 
   const modeMeta = useMemo(
     () => modeOptions.find((item) => item.id === mode) || modeOptions[0],
     [mode],
   );
+
+  const dictationComparison = useMemo(() => {
+    if (!dictationChecked || !dictationSentence) {
+      return [];
+    }
+
+    const expectedWords = splitWords(dictationSentence);
+    const inputWords = splitWords(dictationInput);
+    const maxLength = Math.max(expectedWords.length, inputWords.length);
+
+    return Array.from({ length: maxLength }, (_, index) => {
+      const expected = expectedWords[index] || "";
+      const actual = inputWords[index] || "";
+      return {
+        index,
+        expected,
+        actual,
+        isCorrect: !!expected && expected === actual,
+      };
+    });
+  }, [dictationChecked, dictationInput, dictationSentence]);
+
+  const dictationStats = useMemo(() => {
+    if (!dictationChecked || !dictationSentence) {
+      return { expectedCount: 0, correctCount: 0, accuracy: 0 };
+    }
+
+    const expectedCount = splitWords(dictationSentence).length;
+    const correctCount = dictationComparison.filter((item) => item.isCorrect).length;
+    const accuracy =
+      expectedCount > 0 ? Math.round((correctCount / expectedCount) * 100) : 0;
+
+    return {
+      expectedCount,
+      correctCount,
+      accuracy,
+    };
+  }, [dictationChecked, dictationComparison, dictationSentence]);
+
+  const resetDictationState = () => {
+    setDictationSentence("");
+    setDictationTranslation("");
+    setDictationHint("");
+    setDictationInput("");
+    setDictationChecked(false);
+  };
+
+  const resetPracticeAnswerStates = () => {
+    setRevealedAnswers({});
+    setSelectedOptions({});
+    setBlankInputs({});
+    setMatchingSelections({});
+    setMatchingChecked({});
+  };
+
+  const clearSessionData = () => {
+    setSession(null);
+    setQuestions([]);
+    setVocabulary([]);
+    resetPracticeAnswerStates();
+  };
 
   const fetchRecentSessions = async () => {
     setIsLoadingRecent(true);
@@ -92,7 +179,6 @@ export default function PracticePage() {
         return;
       }
 
-      // Fallback query directly from client in case API auth/cookie fails on reload.
       if (user?.id) {
         const supabase = createSupabaseClient();
         const { data, error: fallbackError } = await supabase
@@ -143,10 +229,9 @@ export default function PracticePage() {
         vocabulary: VocabularyItem[];
       };
       if (payload.session.mode === "mock_test") {
-        setError("Session mock test đang tạm dừng.");
-        setSession(null);
-        setQuestions([]);
-        setVocabulary([]);
+        setError("Session mock test Ä‘ang táº¡m dá»«ng.");
+        clearSessionData();
+        resetDictationState();
         return;
       }
       setSession(payload.session);
@@ -155,11 +240,8 @@ export default function PracticePage() {
       setTopic(payload.session.topic);
       setQuestions(payload.questions || []);
       setVocabulary(payload.vocabulary || []);
-      setRevealedAnswers({});
-      setSelectedOptions({});
-      setBlankInputs({});
-      setMatchingSelections({});
-      setMatchingChecked({});
+      resetDictationState();
+      resetPracticeAnswerStates();
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Load failed");
     } finally {
@@ -170,7 +252,11 @@ export default function PracticePage() {
   useEffect(() => {
     const sessionId = searchParams.get("session");
     const modeParam = searchParams.get("mode");
-    if (modeParam === "grammar" || modeParam === "vocabulary") {
+    if (
+      modeParam === "grammar" ||
+      modeParam === "vocabulary" ||
+      modeParam === "dictation"
+    ) {
       setMode(modeParam);
     }
     fetchRecentSessions();
@@ -181,6 +267,7 @@ export default function PracticePage() {
   }, [user?.id]);
 
   const generate = async (continueCurrent: boolean) => {
+    if (mode === "dictation") return;
     if (mode === "mock_test") {
       setError("Mock test is temporarily disabled. Use grammar or vocabulary.");
       return;
@@ -213,11 +300,7 @@ export default function PracticePage() {
           : payload.vocabulary || [],
       );
       if (!continueCurrent) {
-        setRevealedAnswers({});
-        setSelectedOptions({});
-        setBlankInputs({});
-        setMatchingSelections({});
-        setMatchingChecked({});
+        resetPracticeAnswerStates();
       }
 
       const params = new URLSearchParams();
@@ -234,13 +317,72 @@ export default function PracticePage() {
     }
   };
 
+  const generateDictation = async () => {
+    setIsGeneratingDictation(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/dictation/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          level,
+          topic: topic.trim() || "Daily English",
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to generate dictation sentence");
+      }
+
+      setDictationSentence(payload.sentence || "");
+      setDictationTranslation(payload.translationVi || "");
+      setDictationHint(payload.hintVi || "");
+      setDictationInput("");
+      setDictationChecked(false);
+    } catch (dictationError) {
+      setError(
+        dictationError instanceof Error
+          ? dictationError.message
+          : "Failed to generate dictation sentence",
+      );
+    } finally {
+      setIsGeneratingDictation(false);
+    }
+  };
+
   const playVoice = (text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     utterance.rate = 0.92;
     window.speechSynthesis.speak(utterance);
+  };
+
+  const handleModeChange = (nextMode: string) => {
+    if (
+      nextMode !== "grammar" &&
+      nextMode !== "vocabulary" &&
+      nextMode !== "dictation"
+    ) {
+      return;
+    }
+
+    setMode(nextMode);
+    setError(null);
+
+    if (nextMode === "dictation") {
+      clearSessionData();
+      resetDictationState();
+      return;
+    }
+
+    fetchRecentSessions();
+    resetDictationState();
+    if (session && session.mode !== nextMode) {
+      clearSessionData();
+    }
   };
 
   return (
@@ -252,88 +394,25 @@ export default function PracticePage() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-6 space-y-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          {modeOptions.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setMode(item.id);
-                  fetchRecentSessions();
-                  if (session && session.mode !== item.id) {
-                    setSession(null);
-                    setQuestions([]);
-                    setVocabulary([]);
-                    setRevealedAnswers({});
-                    setSelectedOptions({});
-                    setBlankInputs({});
-                    setMatchingSelections({});
-                    setMatchingChecked({});
-                    router.replace(`/dashboard/practice?mode=${item.id}`);
-                  }
-                }}
-                className={`rounded-lg border p-3 text-left transition-colors ${
-                  mode === item.id
-                    ? "border-primary bg-primary/10"
-                    : "border-border hover:border-primary"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="h-4 w-4 text-primary" />
-                  <span className="font-medium">{item.label}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">{item.description}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <select
-            value={level}
-            onChange={(event) => setLevel(event.target.value as LearningLevel)}
-            className="rounded-lg border border-input bg-background px-3 py-2"
-          >
-            {levelOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-          <input
-            value={topic}
-            onChange={(event) => setTopic(event.target.value)}
-            className="md:col-span-2 rounded-lg border border-input bg-background px-3 py-2"
-            placeholder="Topic"
-          />
-        </div>
-
-        {error && (
-          <div className="rounded-lg bg-red-100/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => generate(false)}
-            disabled={isGenerating || !topic.trim()}
-            className="rounded-lg bg-primary px-5 py-2.5 text-primary-foreground font-medium inline-flex items-center gap-2 disabled:opacity-60"
-          >
-            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {session ? "Start New Session" : "Generate"}
-          </button>
-          <button
-            onClick={() => generate(true)}
-            disabled={isGenerating || !session}
-            className="rounded-lg border border-border px-5 py-2.5 font-medium hover:border-primary disabled:opacity-60"
-          >
-            Continue Generating
-          </button>
-        </div>
-      </div>
+      <PracticeToolbar
+        modeOptions={modeOptions}
+        mode={mode}
+        levelOptions={levelOptions}
+        level={level}
+        topic={topic}
+        error={error}
+        hasSession={!!session}
+        dictationSentence={dictationSentence}
+        isGenerating={isGenerating}
+        isGeneratingDictation={isGeneratingDictation}
+        onModeChange={handleModeChange}
+        onLevelChange={setLevel}
+        onTopicChange={setTopic}
+        onGenerate={() => generate(false)}
+        onContinue={() => generate(true)}
+        onGenerateDictation={generateDictation}
+        onPlayDictation={() => playVoice(dictationSentence)}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -351,240 +430,74 @@ export default function PracticePage() {
             </div>
           )}
 
+          {mode === "dictation" && (
+            <DictationPanel
+              sentence={dictationSentence}
+              hint={dictationHint}
+              translation={dictationTranslation}
+              inputValue={dictationInput}
+              checked={dictationChecked}
+              comparison={dictationComparison}
+              stats={dictationStats}
+              onPlay={() => playVoice(dictationSentence)}
+              onInputChange={setDictationInput}
+              onCheck={() => setDictationChecked(true)}
+              onReset={() => {
+                setDictationInput("");
+                setDictationChecked(false);
+              }}
+            />
+          )}
+
           {session?.mode === "vocabulary" &&
             vocabulary.map((item, index) => (
-              <div key={item.id} className="rounded-lg border border-border bg-card p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Word #{index + 1}</p>
-                    <h3 className="text-2xl font-bold">{item.word}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {item.phonetic || "No phonetic"} {item.partOfSpeech ? `- ${item.partOfSpeech}` : ""}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => playVoice(item.exampleSentence)}
-                    className="rounded-lg border border-border px-3 py-2 text-sm inline-flex items-center gap-2 hover:border-primary"
-                  >
-                    <Volume2 className="h-4 w-4" />
-                    Play
-                  </button>
-                </div>
-                <p><span className="font-medium">Meaning:</span> {item.meaningVi}</p>
-                <p className="text-sm"><span className="font-medium">Example:</span> {item.exampleSentence}</p>
-                <p className="text-sm text-muted-foreground">{item.exampleTranslation}</p>
-              </div>
+              <VocabularyCard
+                key={item.id}
+                item={item}
+                index={index}
+                onPlayExample={playVoice}
+              />
             ))}
 
-          {session && session.mode !== "vocabulary" &&
-            questions.map((question, index) => {
-              const revealed = !!revealedAnswers[question.id];
-              const selectedOption = selectedOptions[question.id];
-              const fillInput = (blankInputs[question.id] || "").trim();
-              const acceptableAnswers =
-                question.metadata.acceptableAnswers &&
-                question.metadata.acceptableAnswers.length > 0
-                  ? question.metadata.acceptableAnswers
-                  : [question.correctAnswer];
-              const isBlankCorrect = acceptableAnswers.some(
-                (answer) => answer.toLowerCase().trim() === fillInput.toLowerCase(),
-              );
-              const pairs = question.metadata.pairs || [];
-              const selectedMap = matchingSelections[question.id] || {};
-              const allPairsSelected =
-                pairs.length > 0 && pairs.every((pair) => !!selectedMap[pair.left]);
-              const isMatchingAllCorrect =
-                pairs.length > 0 &&
-                pairs.every((pair) => selectedMap[pair.left] === pair.right);
-              return (
-                <div key={question.id} className="rounded-lg border border-border bg-card p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-semibold">Q{index + 1}. {question.questionText}</h3>
-                    <span className="rounded-full bg-muted px-2 py-1 text-xs">
-                      {question.questionType.replace("_", " ")}
-                    </span>
-                  </div>
-                  {question.metadata.instruction && (
-                    <p className="text-sm text-muted-foreground">{question.metadata.instruction}</p>
-                  )}
+          {session &&
+            session.mode !== "vocabulary" &&
+            questions.map((question, index) => (
+              <GrammarQuestionCard
+                key={question.id}
+                question={question}
+                index={index}
+                revealed={!!revealedAnswers[question.id]}
+                selectedOption={selectedOptions[question.id] || ""}
+                blankInput={blankInputs[question.id] || ""}
+                selectedMap={matchingSelections[question.id] || {}}
+                isMatchingChecked={!!matchingChecked[question.id]}
+                onSelectOption={(value) => {
+                  setSelectedOptions((prev) => ({ ...prev, [question.id]: value }));
+                  setRevealedAnswers((prev) => ({ ...prev, [question.id]: true }));
+                }}
+                onBlankInputChange={(value) => {
+                  setBlankInputs((prev) => ({ ...prev, [question.id]: value }));
+                }}
+                onCheckBlank={() => {
+                  setRevealedAnswers((prev) => ({ ...prev, [question.id]: true }));
+                }}
+                onMatchingChange={(left, value) => {
+                  setMatchingSelections((prev) => ({
+                    ...prev,
+                    [question.id]: {
+                      ...(prev[question.id] || {}),
+                      [left]: value,
+                    },
+                  }));
+                }}
+                onCheckMatching={() => {
+                  setMatchingChecked((prev) => ({ ...prev, [question.id]: true }));
+                  setRevealedAnswers((prev) => ({ ...prev, [question.id]: true }));
+                }}
+              />
+            ))}
 
-                  {question.questionType === "multiple_choice" &&
-                    question.options.length > 0 && (
-                    <div className="grid gap-2">
-                      {question.options.map((option) => (
-                        <button
-                          key={`${question.id}-${option.optionOrder}`}
-                          onClick={() => {
-                            if (revealed) return;
-                            setSelectedOptions((prev) => ({
-                              ...prev,
-                              [question.id]: option.optionText,
-                            }));
-                            setRevealedAnswers((prev) => ({
-                              ...prev,
-                              [question.id]: true,
-                            }));
-                          }}
-                          className={`rounded-lg border px-3 py-2 text-sm text-left transition-colors ${
-                            revealed
-                              ? option.isCorrect
-                                ? "border-green-500 bg-green-50/70 dark:bg-green-950/40"
-                                : selectedOption === option.optionText
-                                  ? "border-red-500 bg-red-50/70 dark:bg-red-950/40"
-                                  : "border-border"
-                              : "border-border hover:border-primary"
-                          }`}
-                        >
-                          {option.optionText}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {question.questionType === "fill_blank" && (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          value={blankInputs[question.id] || ""}
-                          onChange={(event) =>
-                            setBlankInputs((prev) => ({
-                              ...prev,
-                              [question.id]: event.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg border border-input bg-background px-3 py-2"
-                          placeholder="Type your answer..."
-                        />
-                        <button
-                          onClick={() =>
-                            setRevealedAnswers((prev) => ({
-                              ...prev,
-                              [question.id]: true,
-                            }))
-                          }
-                          className="rounded-lg bg-primary px-4 py-2 text-primary-foreground font-medium hover:opacity-90"
-                        >
-                          Check
-                        </button>
-                      </div>
-
-                      {revealed && (
-                        <p
-                          className={`text-sm ${
-                            isBlankCorrect
-                              ? "text-green-700 dark:text-green-400"
-                              : "text-red-700 dark:text-red-400"
-                          }`}
-                        >
-                          {isBlankCorrect
-                            ? "Correct answer."
-                            : `Not quite. Correct answer: ${question.correctAnswer}`}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {question.questionType === "matching" &&
-                    question.metadata.pairs &&
-                    question.metadata.pairs.length > 0 && (
-                    <div className="space-y-2">
-                      {pairs.map((pair, pairIndex) => {
-                        const selectedValue = selectedMap[pair.left] || "";
-                        const isPairCorrect = selectedValue === pair.right;
-
-                        return (
-                          <div
-                            key={`${question.id}-${pairIndex}`}
-                            className="grid gap-2 md:grid-cols-2"
-                          >
-                            <div className="rounded-lg border border-border px-3 py-2 text-sm font-medium">
-                              {pair.left}
-                            </div>
-                            <select
-                              value={selectedValue}
-                              disabled={!!matchingChecked[question.id]}
-                              onChange={(event) =>
-                                setMatchingSelections((prev) => ({
-                                  ...prev,
-                                  [question.id]: {
-                                    ...(prev[question.id] || {}),
-                                    [pair.left]: event.target.value,
-                                  },
-                                }))
-                              }
-                              className={`rounded-lg border px-3 py-2 text-sm bg-background ${
-                                matchingChecked[question.id]
-                                  ? isPairCorrect
-                                    ? "border-green-500"
-                                    : "border-red-500"
-                                  : "border-input"
-                              }`}
-                            >
-                              <option value="">Select match</option>
-                              {pairs.map((rightPair) => (
-                                <option
-                                  key={`${question.id}-${pair.left}-${rightPair.right}`}
-                                  value={rightPair.right}
-                                >
-                                  {rightPair.right}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {question.questionType === "matching" && (
-                    <button
-                      onClick={() => {
-                        if (!allPairsSelected) {
-                          return;
-                        }
-
-                        setMatchingChecked((prev) => ({
-                          ...prev,
-                          [question.id]: true,
-                        }));
-                        setRevealedAnswers((prev) => ({
-                          ...prev,
-                          [question.id]: true,
-                        }));
-                      }}
-                      className="rounded-lg border border-border px-3 py-2 text-sm hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!allPairsSelected || !!matchingChecked[question.id]}
-                    >
-                      {matchingChecked[question.id]
-                        ? "Checked"
-                        : "Check Matching"}
-                    </button>
-                  )}
-
-                  {revealed && question.questionType !== "fill_blank" && (
-                    <div className="rounded-lg bg-blue-50/60 dark:bg-blue-950/40 px-3 py-2 text-sm">
-                      {question.questionType === "matching" && (
-                        <p
-                          className={`font-medium ${
-                            isMatchingAllCorrect
-                              ? "text-green-700 dark:text-green-400"
-                              : "text-red-700 dark:text-red-400"
-                          }`}
-                        >
-                          {isMatchingAllCorrect
-                            ? "Great job. All matches are correct."
-                            : "Some matches are incorrect."}
-                        </p>
-                      )}
-                      <p><span className="font-medium">Correct:</span> {question.correctAnswer}</p>
-                      <p className="text-muted-foreground">{question.explanation}</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-          {session && (
+          {session && mode !== "dictation" && (
             <button
               onClick={() => generate(true)}
               disabled={isGenerating}
@@ -596,37 +509,19 @@ export default function PracticePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-card p-4">
-            <p className="font-semibold mb-2">Recent Sessions</p>
-            {isLoadingRecent ? (
-              <p className="text-sm text-muted-foreground">Loading sessions...</p>
-            ) : recentError ? (
-              <p className="text-sm text-red-700 dark:text-red-400">{recentError}</p>
-            ) : recentSessions.length > 0 ? (
-              <div className="space-y-2">
-                {recentSessions.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      loadSession(item.id);
-                      const params = new URLSearchParams();
-                      params.set("mode", item.mode);
-                      params.set("session", item.id);
-                      router.replace(`/dashboard/practice?${params.toString()}`);
-                    }}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-left hover:border-primary"
-                  >
-                    <p className="text-sm font-medium line-clamp-1">{item.title || "Untitled session"}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-1">
-                      {item.mode.replace("_", " ")} - {item.topic}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No sessions yet.</p>
-            )}
-          </div>
+          <RecentSessions
+            mode={mode}
+            isLoadingRecent={isLoadingRecent}
+            recentError={recentError}
+            sessions={recentSessions}
+            onSelectSession={(sessionId, sessionMode) => {
+              loadSession(sessionId);
+              const params = new URLSearchParams();
+              params.set("mode", sessionMode);
+              params.set("session", sessionId);
+              router.replace(`/dashboard/practice?${params.toString()}`);
+            }}
+          />
         </div>
       </div>
     </div>

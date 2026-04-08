@@ -60,7 +60,7 @@ export function Sidebar() {
         </div>
 
         <Link
-          href="/settings"
+          href="/dashboard/settings"
           className="flex items-center gap-3 rounded-lg px-4 py-2 font-medium text-foreground hover:bg-muted transition-colors"
         >
           <Settings className="h-5 w-5" />

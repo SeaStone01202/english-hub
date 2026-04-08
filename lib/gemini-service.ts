@@ -12,6 +12,11 @@ interface GenerateLearningPayload {
   quantity: number;
 }
 
+interface GenerateDictationPayload {
+  level: LearningLevel;
+  topic: string;
+}
+
 interface GeneratedGrammarQuestion {
   question_type: SessionQuestionType;
   question: string;
@@ -43,6 +48,12 @@ interface GeneratedVocabularyResponse {
   title: string;
   description: string;
   items: GeneratedVocabularyItem[];
+}
+
+interface GeneratedDictationResponse {
+  sentence: string;
+  translation_vi?: string;
+  hint_vi?: string;
 }
 
 const defaultModelCandidates = [
@@ -295,6 +306,21 @@ function validateVocabularyResponse(response: GeneratedVocabularyResponse) {
   });
 }
 
+function validateDictationResponse(response: GeneratedDictationResponse) {
+  if (!response || !response.sentence) {
+    throw new Error("Gemini did not return a valid dictation sentence");
+  }
+
+  const wordCount = response.sentence
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  if (wordCount < 10) {
+    throw new Error("Dictation sentence is too short");
+  }
+}
+
 async function generateWithModel(
   prompt: string,
   systemPrompt: string,
@@ -403,5 +429,75 @@ export async function generateLearningContent(payload: GenerateLearningPayload):
     lastError instanceof Error
       ? `Failed generating with all Gemini models (${modelCandidates.join(", ")}). Last error: ${lastError.message}. Attempts: ${modelErrors.join(" | ")}`
       : `Failed generating with all Gemini models (${modelCandidates.join(", ")})`,
+  );
+}
+
+export async function generateDictationSentence(
+  payload: GenerateDictationPayload,
+): Promise<{
+  model: string;
+  sentence: string;
+  translationVi: string;
+  hintVi: string;
+  usage: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  } | null;
+}> {
+  const apiModelCandidates = await listApiModelCandidates();
+  const modelCandidates = [
+    process.env.GEMINI_MODEL,
+    ...apiModelCandidates,
+    ...defaultModelCandidates,
+  ].filter((value, index, arr): value is string => !!value && arr.indexOf(value) === index);
+
+  let lastError: unknown;
+  const modelErrors: string[] = [];
+
+  const systemPrompt = [
+    "You are an English dictation exercise generator for Vietnamese learners.",
+    "Return only valid JSON.",
+    "No markdown, no extra keys, no explanations outside JSON.",
+    "Sentence must be natural spoken English and suitable for listening practice.",
+  ].join(" ");
+
+  const prompt = [
+    `Create one dictation sentence for level ${payload.level}.`,
+    `Topic: ${payload.topic}.`,
+    "Constraints:",
+    "- sentence must be 14 to 24 words.",
+    "- sentence should be one single sentence.",
+    "- avoid proper names and uncommon jargon.",
+    "- translation_vi should be natural Vietnamese.",
+    "- hint_vi should be short and helpful but not reveal the full sentence.",
+    'Return JSON: {"sentence":"...","translation_vi":"...","hint_vi":"..."}',
+  ].join("\n");
+
+  for (const modelName of modelCandidates) {
+    try {
+      const { text, usage } = await generateWithModel(prompt, systemPrompt, modelName);
+      const parsed = safeJsonParse<GeneratedDictationResponse>(text);
+      validateDictationResponse(parsed);
+
+      return {
+        model: modelName,
+        sentence: parsed.sentence.trim(),
+        translationVi: (parsed.translation_vi || "").trim(),
+        hintVi: (parsed.hint_vi || "").trim(),
+        usage,
+      };
+    } catch (error) {
+      lastError = error;
+      modelErrors.push(
+        `${modelName}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  throw new Error(
+    lastError instanceof Error
+      ? `Failed generating dictation with all Gemini models (${modelCandidates.join(", ")}). Last error: ${lastError.message}. Attempts: ${modelErrors.join(" | ")}`
+      : `Failed generating dictation with all Gemini models (${modelCandidates.join(", ")})`,
   );
 }

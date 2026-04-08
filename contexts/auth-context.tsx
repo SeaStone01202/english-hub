@@ -28,41 +28,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    let isMounted = true
+
+    const mapUser = (
+      authUser: {
+        id: string
+        email?: string | null
+        created_at?: string | null
+        user_metadata?: { name?: string } | null
+      },
+      profileData?: {
+        id: string
+        email: string
+        name: string | null
+        level: 'beginner' | 'intermediate' | 'advanced' | null
+        created_at: string
+      } | null,
+    ): User => {
+      if (profileData) {
+        return {
+          id: profileData.id,
+          email: profileData.email,
+          name: profileData.name || authUser.email?.split('@')[0] || 'User',
+          level: profileData.level || 'beginner',
+          joinedAt: profileData.created_at,
+        }
+      }
+
+      return {
+        id: authUser.id,
+        email: authUser.email || '',
+        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+        level: 'beginner',
+        joinedAt: authUser.created_at || new Date().toISOString(),
+      }
+    }
+
     // Check for existing session
     const checkAuth = async () => {
+      const loadingTimeout = window.setTimeout(() => {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }, 8000)
+
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        const authUser = session?.user
+
         if (authUser) {
-          // Fetch user profile from database
           const { data: profileData } = await supabase
             .from('users')
             .select('*')
             .eq('id', authUser.id)
-            .single()
+            .maybeSingle()
 
-          if (profileData) {
-            setUser({
-              id: profileData.id,
-              email: profileData.email,
-              name: profileData.name || authUser.email?.split('@')[0] || 'User',
-              level: profileData.level || 'beginner',
-              joinedAt: profileData.created_at,
-            })
-          } else {
-            // If no profile exists, use auth user data
-            setUser({
-              id: authUser.id,
-              email: authUser.email || '',
-              name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-              level: 'beginner',
-              joinedAt: authUser.created_at || new Date().toISOString(),
-            })
+          if (isMounted) {
+            setUser(mapUser(authUser, profileData))
           }
+        } else if (isMounted) {
+          setUser(null)
         }
       } catch (error) {
         console.error('Auth check failed:', error)
+        if (isMounted) {
+          setUser(null)
+        }
       } finally {
-        setIsLoading(false)
+        window.clearTimeout(loadingTimeout)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -71,29 +109,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const { data: profileData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        if (session?.user) {
+          const { data: profileData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle()
 
-        if (profileData) {
-          setUser({
-            id: profileData.id,
-            email: profileData.email,
-            name: profileData.name,
-            level: profileData.level,
-            joinedAt: profileData.created_at,
-          })
+          if (isMounted) {
+            setUser(mapUser(session.user, profileData))
+          }
+        } else if (isMounted) {
+          setUser(null)
         }
-      } else {
-        setUser(null)
+      } catch (error) {
+        console.error('Auth state update failed:', error)
+        if (isMounted) {
+          setUser(
+            session?.user
+              ? mapUser(session.user, null)
+              : null,
+          )
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     })
 
     return () => {
+      isMounted = false
       subscription?.unsubscribe()
     }
   }, [supabase])
