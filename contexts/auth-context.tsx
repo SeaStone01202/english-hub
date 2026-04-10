@@ -21,11 +21,32 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+type IpEventType = 'login_success' | 'login_failed' | 'register_success' | 'register_failed' | 'logout'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const supabase = useMemo(() => createClient(), [])
+
+  const trackIpEvent = async (
+    eventType: IpEventType,
+    metadata?: Record<string, unknown>,
+  ) => {
+    try {
+      await fetch('/api/ip-tracking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventType,
+          metadata: metadata || {},
+        }),
+      })
+    } catch (error) {
+      console.error('Failed to track IP event:', error)
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -173,6 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
         }
       }
+      await trackIpEvent('login_success')
+    } catch (error) {
+      await trackIpEvent('login_failed')
+      throw error
     } finally {
       setIsLoading(false)
     }
@@ -207,6 +232,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           joinedAt: data.user.created_at || new Date().toISOString(),
         })
       }
+      await trackIpEvent('register_success')
+    } catch (error) {
+      await trackIpEvent('register_failed')
+      throw error
     } finally {
       setIsLoading(false)
     }
@@ -214,6 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      await trackIpEvent('logout')
       await supabase.auth.signOut()
       setUser(null)
     } catch (error) {
