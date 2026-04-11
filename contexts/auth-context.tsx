@@ -85,6 +85,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    const hydrateUser = async (
+      authUser: {
+        id: string
+        email?: string | null
+        created_at?: string | null
+        user_metadata?: { name?: string } | null
+      },
+    ) => {
+      try {
+        const { data: profileData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUser.id)
+          .maybeSingle()
+
+        if (isMounted) {
+          setUser(mapUser(authUser, profileData))
+        }
+      } catch (error) {
+        console.error('Profile hydration failed, falling back to auth user:', error)
+        if (isMounted) {
+          setUser(mapUser(authUser, null))
+        }
+      }
+    }
+
     // Check for existing session
     const checkAuth = async () => {
       const loadingTimeout = window.setTimeout(() => {
@@ -95,20 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        const authUser = session?.user
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
 
         if (authUser) {
-          const { data: profileData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authUser.id)
-            .maybeSingle()
-
-          if (isMounted) {
-            setUser(mapUser(authUser, profileData))
-          }
+          await hydrateUser(authUser)
         } else if (isMounted) {
           setUser(null)
         }
@@ -133,15 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       try {
         if (session?.user) {
-          const { data: profileData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle()
-
-          if (isMounted) {
-            setUser(mapUser(session.user, profileData))
-          }
+          await hydrateUser(session.user)
         } else if (isMounted) {
           setUser(null)
         }
@@ -177,22 +186,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error
 
-      if (data.session?.user) {
+      if (data.user) {
+        try {
+          const fallbackName = data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User'
+
+          await supabase.from('users').upsert(
+            {
+              id: data.user.id,
+              email: data.user.email || email,
+              name: fallbackName,
+              level: 'beginner',
+            },
+            { onConflict: 'id' },
+          )
+        } catch (profileError) {
+          console.error('Profile upsert failed after login:', profileError)
+        }
+
         const { data: profileData } = await supabase
           .from('users')
           .select('*')
-          .eq('id', data.session.user.id)
-          .single()
+          .eq('id', data.user.id)
+          .maybeSingle()
 
-        if (profileData) {
-          setUser({
-            id: profileData.id,
-            email: profileData.email,
-            name: profileData.name,
-            level: profileData.level,
-            joinedAt: profileData.created_at,
-          })
-        }
+        setUser({
+          id: data.user.id,
+          email: data.user.email || email,
+          name: profileData?.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+          level: profileData?.level || 'beginner',
+          joinedAt: profileData?.created_at || data.user.created_at || new Date().toISOString(),
+        })
       }
       await trackIpEvent('login_success')
     } catch (error) {
