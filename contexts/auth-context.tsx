@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 export interface User {
   id: string
@@ -48,127 +49,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const mapUser = (authUser: SupabaseUser): User => ({
+    id: authUser.id,
+    email: authUser.email || '',
+    name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+    level: 'beginner',
+    joinedAt: authUser.created_at || new Date().toISOString(),
+  })
+
   useEffect(() => {
     let isMounted = true
 
-    const mapUser = (
-      authUser: {
-        id: string
-        email?: string | null
-        created_at?: string | null
-        user_metadata?: { name?: string } | null
-      },
-      profileData?: {
-        id: string
-        email: string
-        name: string | null
-        level: 'beginner' | 'intermediate' | 'advanced' | null
-        created_at: string
-      } | null,
-    ): User => {
-      if (profileData) {
-        return {
-          id: profileData.id,
-          email: profileData.email,
-          name: profileData.name || authUser.email?.split('@')[0] || 'User',
-          level: profileData.level || 'beginner',
-          joinedAt: profileData.created_at,
-        }
-      }
-
-      return {
-        id: authUser.id,
-        email: authUser.email || '',
-        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-        level: 'beginner',
-        joinedAt: authUser.created_at || new Date().toISOString(),
-      }
-    }
-
-    const hydrateUser = async (
-      authUser: {
-        id: string
-        email?: string | null
-        created_at?: string | null
-        user_metadata?: { name?: string } | null
-      },
-    ) => {
-      try {
-        const { data: profileData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', authUser.id)
-          .maybeSingle()
-
-        if (isMounted) {
-          setUser(mapUser(authUser, profileData))
-        }
-      } catch (error) {
-        console.error('Profile hydration failed, falling back to auth user:', error)
-        if (isMounted) {
-          setUser(mapUser(authUser, null))
-        }
-      }
-    }
-
-    const hydrateUserFromServerCookie = async (): Promise<boolean> => {
-      try {
-        const response = await fetch('/api/auth/me', {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        })
-
-        if (!response.ok) {
-          return false
-        }
-
-        const payload = (await response.json()) as {
-          user: User | null
-        }
-
-        if (isMounted) {
-          setUser(payload.user || null)
-        }
-
-        return !!payload.user
-      } catch (error) {
-        console.error('Server-cookie auth fallback failed:', error)
-        return false
-      }
-    }
-
     // Check for existing session
     const checkAuth = async () => {
-      const loadingTimeout = window.setTimeout(() => {
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }, 8000)
-
       try {
         const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser()
+          data: { session },
+        } = await supabase.auth.getSession()
 
-        if (authUser) {
-          await hydrateUser(authUser)
-        } else {
-          const restoredFromCookie = await hydrateUserFromServerCookie()
-          if (!restoredFromCookie && isMounted) {
-            setUser(null)
-          }
+        if (isMounted) {
+          setUser(session?.user ? mapUser(session.user) : null)
         }
       } catch (error) {
         console.error('Auth check failed:', error)
-        const restoredFromCookie = await hydrateUserFromServerCookie()
-        if (!restoredFromCookie && isMounted) {
+        if (isMounted) {
           setUser(null)
         }
       } finally {
-        window.clearTimeout(loadingTimeout)
         if (isMounted) {
           setIsLoading(false)
         }
@@ -181,25 +88,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (session?.user) {
-          await hydrateUser(session.user)
-        } else if (isMounted) {
-          setUser(null)
-        }
-      } catch (error) {
-        console.error('Auth state update failed:', error)
-        if (isMounted) {
-          setUser(
-            session?.user
-              ? mapUser(session.user, null)
-              : null,
-          )
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
+      if (isMounted) {
+        setUser(session?.user ? mapUser(session.user) : null)
+        setIsLoading(false)
       }
     })
 
@@ -212,44 +103,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) throw error
 
-      if (data.user) {
-        try {
-          const fallbackName = data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User'
-
-          await supabase.from('users').upsert(
-            {
-              id: data.user.id,
-              email: data.user.email || email,
-              name: fallbackName,
-              level: 'beginner',
-            },
-            { onConflict: 'id' },
-          )
-        } catch (profileError) {
-          console.error('Profile upsert failed after login:', profileError)
-        }
-
-        const { data: profileData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user.id)
-          .maybeSingle()
-
-        setUser({
-          id: data.user.id,
-          email: data.user.email || email,
-          name: profileData?.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-          level: profileData?.level || 'beginner',
-          joinedAt: profileData?.created_at || data.user.created_at || new Date().toISOString(),
-        })
-      }
       await trackIpEvent('login_success')
     } catch (error) {
       await trackIpEvent('login_failed')
