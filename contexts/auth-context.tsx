@@ -111,6 +111,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    const hydrateUserFromServerCookie = async (): Promise<boolean> => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          method: 'GET',
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        })
+
+        if (!response.ok) {
+          return false
+        }
+
+        const payload = (await response.json()) as {
+          user: User | null
+        }
+
+        if (isMounted) {
+          setUser(payload.user || null)
+        }
+
+        return !!payload.user
+      } catch (error) {
+        console.error('Server-cookie auth fallback failed:', error)
+        return false
+      }
+    }
+
     // Check for existing session
     const checkAuth = async () => {
       const loadingTimeout = window.setTimeout(() => {
@@ -126,12 +155,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (authUser) {
           await hydrateUser(authUser)
-        } else if (isMounted) {
-          setUser(null)
+        } else {
+          const restoredFromCookie = await hydrateUserFromServerCookie()
+          if (!restoredFromCookie && isMounted) {
+            setUser(null)
+          }
         }
       } catch (error) {
         console.error('Auth check failed:', error)
-        if (isMounted) {
+        const restoredFromCookie = await hydrateUserFromServerCookie()
+        if (!restoredFromCookie && isMounted) {
           setUser(null)
         }
       } finally {
